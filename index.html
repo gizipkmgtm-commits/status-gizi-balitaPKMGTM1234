@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Status Gizi Balita</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+
+<style>
+body { font-family:'Inter', sans-serif; background:#f4f6f9; margin:0; }
+
+/* HEADER */
+header {
+  background:#4e73df;
+  color:white;
+  text-align:center;
+  padding:15px;
+  font-size:18px;
+}
+
+/* DASHBOARD */
+.dashboard {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  padding:10px;
+}
+.card {
+  padding:15px;
+  border-radius:12px;
+  color:white;
+  text-align:center;
+}
+.card span { font-size:20px; font-weight:bold; }
+.total { background:#4e73df; }
+.kurang { background:#e74a3b; }
+.baik { background:#1cc88a; }
+.lebih { background:#f6c23e; }
+
+/* FORM */
+form {
+  background:white;
+  margin:10px;
+  padding:15px;
+  border-radius:12px;
+}
+input, select {
+  width:100%;
+  padding:12px;
+  margin-top:8px;
+  border-radius:10px;
+  border:1px solid #ccc;
+  font-size:16px;
+}
+button {
+  width:100%;
+  padding:14px;
+  margin-top:15px;
+  border:none;
+  border-radius:10px;
+  background:#4e73df;
+  color:white;
+  font-weight:bold;
+}
+
+/* HASIL */
+#hasilBox {
+  display:none;
+  background:white;
+  margin:10px;
+  padding:15px;
+  border-radius:12px;
+  text-align:center;
+}
+
+/* MAP */
+#map {
+  height:300px;
+  margin:10px;
+  border-radius:12px;
+}
+
+@media(min-width:768px){
+  .dashboard { grid-template-columns:repeat(4,1fr); }
+  form { max-width:500px; margin:auto; }
+  #map { height:400px; width:90%; margin:20px auto; }
+}
+</style>
+</head>
+
+<body>
+
+<header>📊 Status Gizi Balita</header>
+
+<!-- DASHBOARD -->
+<div class="dashboard">
+  <div class="card total">Total<br><span id="total">0</span></div>
+  <div class="card kurang">Kurang<br><span id="kurang">0</span></div>
+  <div class="card baik">Baik<br><span id="baik">0</span></div>
+  <div class="card lebih">Lebih<br><span id="lebih">0</span></div>
+</div>
+
+<!-- FORM -->
+<form>
+<label>Nama Balita</label>
+<input type="text" id="nama">
+
+<label>Nama Orang Tua</label>
+<input type="text" id="ortu">
+
+<label>Tanggal Lahir</label>
+<input type="date" id="tgl">
+
+<label>Jenis Kelamin</label>
+<select id="jk">
+<option value="L">Laki-laki</option>
+<option value="P">Perempuan</option>
+</select>
+
+<label>Berat Badan (kg)</label>
+<input type="number" id="bb">
+
+<label>Tinggi Badan (cm)</label>
+<input type="number" id="tb">
+
+<button type="button" onclick="simpan()">Simpan Data</button>
+</form>
+
+<!-- HASIL -->
+<div id="hasilBox">
+  <div><b>Hasil Status Gizi</b></div>
+  <div id="hasilText" style="margin-top:10px;"></div>
+</div>
+
+<!-- MAP -->
+<h3 style="text-align:center;">📍 Peta Sebaran</h3>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<script>
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyIoTEhoZaqPEtmV5pcrSz7pfUKfyFoxL-gaWzfO4nMhllliQH34KLvv2OclhyQYdN3/exec"; // GANTI
+
+let data = [];
+
+// MAP
+let map = L.map('map').setView([-3.3,114.6], 11);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+// UMUR
+function umur(t){
+  let d=new Date(t), n=new Date();
+  return (n.getFullYear()-d.getFullYear())*12+(n.getMonth()-d.getMonth());
+}
+
+// ================= STATUS GIZI
+function statusBBU(bb, umur){
+  if(bb < (umur*0.4 + 2)) return "Gizi Kurang";
+  if(bb > (umur*0.6 + 8)) return "Gizi Lebih";
+  return "Gizi Baik";
+}
+
+function statusTBU(tb, umur){
+  if(tb < (umur*1.2 + 45)) return "Pendek";
+  if(tb > (umur*1.8 + 55)) return "Tinggi";
+  return "Normal";
+}
+
+function statusBBTB(bb, tb){
+  let bmi = bb / ((tb/100)*(tb/100));
+  if(bmi < 14) return "Kurus";
+  if(bmi > 18) return "Gemuk";
+  return "Normal";
+}
+
+// WARNA
+function warna(s){
+  if(s.includes("Kurang") || s.includes("Pendek") || s.includes("Kurus")) return "#e74a3b";
+  if(s.includes("Lebih") || s.includes("Gemuk") || s.includes("Tinggi")) return "#f6c23e";
+  return "#1cc88a";
+}
+
+// DASHBOARD
+function update(){
+  document.getElementById("total").innerText=data.length;
+  document.getElementById("kurang").innerText=data.filter(x=>x.bbu.includes("Kurang")).length;
+  document.getElementById("baik").innerText=data.filter(x=>x.bbu.includes("Baik")).length;
+  document.getElementById("lebih").innerText=data.filter(x=>x.bbu.includes("Lebih")).length;
+}
+
+// LOKASI
+function getLokasi(){
+  return new Promise(res=>{
+    navigator.geolocation.getCurrentPosition(
+      pos=>res(pos.coords),
+      ()=>res(null)
+    );
+  });
+}
+
+// SIMPAN
+async function simpan(){
+
+  let nama = document.getElementById("nama").value;
+  let ortu = document.getElementById("ortu").value;
+  let tgl = document.getElementById("tgl").value;
+  let jk = document.getElementById("jk").value;
+  let bb = parseFloat(document.getElementById("bb").value);
+  let tb = parseFloat(document.getElementById("tb").value);
+
+  let u = umur(tgl);
+
+  let bbu = statusBBU(bb, u);
+  let tbu = statusTBU(tb, u);
+  let bbtb = statusBBTB(bb, tb);
+
+  // tampilkan hasil
+  let box = document.getElementById("hasilBox");
+  let text = document.getElementById("hasilText");
+
+  box.style.display = "block";
+  box.style.borderLeft = "8px solid "+warna(bbu);
+
+  text.innerHTML = `
+  <b>BB/U:</b> ${bbu}<br>
+  <b>TB/U:</b> ${tbu}<br>
+  <b>BB/TB:</b> ${bbtb}<br>
+  <small>Umur: ${u} bulan</small>
+  `;
+
+  // dashboard
+  data.push({bbu});
+  update();
+
+  // lokasi
+  let loc = await getLokasi();
+
+  // kirim ke spreadsheet
+  fetch(WEB_APP_URL,{
+    method:"POST",
+    body:JSON.stringify({
+      nama, ortu, tgl, umur:u, jk, bb, tb,
+      statusBB_U:bbu,
+      statusTB_U:tbu,
+      statusBB_TB:bbtb,
+      lat: loc?loc.latitude:"",
+      lng: loc?loc.longitude:""
+    })
+  });
+
+  // map
+  if(loc){
+    L.circleMarker([loc.latitude,loc.longitude],{
+      color:warna(bbu),
+      radius:8
+    }).addTo(map)
+    .bindPopup("<b>"+nama+"</b><br>"+bbu);
+  }
+
+  alert("Data berhasil disimpan!");
+}
+</script>
+
+</body>
+</html>
